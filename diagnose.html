@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Діагностика</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; background: #f5f5f2; color: #222; }
+  #left { width: 440px; padding: 20px; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; }
+  #right { flex: 1; padding: 20px; overflow-y: auto; }
+  #status { font-size: 12px; margin-bottom: 14px; }
+  #status.ok { color: #1a7a45; }
+  #status.err { color: #b3261e; }
+  label { display: block; font-size: 12px; font-weight: 600; margin: 12px 0 4px; color: #555; }
+  select, input { width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 13px; }
+  .chk { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; }
+  .chk input { width: auto; }
+  button.primary { background: #2b6cb0; color: #fff; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; margin-top: 16px; font-size: 14px; width: 100%; }
+  button.plain { background: #eee; border: 1px solid #ccc; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  button.small-x { background: none; border: none; color: #b3261e; font-size: 16px; cursor: pointer; line-height: 1; padding: 0 4px; }
+  .examples { margin-top: 16px; }
+  .examples button { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
+  .titlebar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .titlebar h2 { margin: 0; }
+  .help-btn { background: #eef4fb; border: 1px solid #bcd6ef; color: #2b6cb0; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; font-weight: 700; cursor: pointer; line-height: 1; padding: 0; }
+  #err { color: #b3261e; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+  .diag { display: inline-block; background: #fde8e8; color: #8a1c1c; padding: 4px 10px; border-radius: 6px; font-size: 13px; margin: 3px 4px 3px 0; }
+  .diag-card { border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid; }
+  .diag-card.tier-problem { background: #fde8e8; border-color: #e5a3a3; }
+  .diag-card.tier-possible { background: #fdf3e0; border-color: #e8c98a; }
+  .diag-card .dhead { display: flex; align-items: center; justify-content: space-between; }
+  .diag-card .dname { font-weight: 700; font-size: 14px; }
+  .diag-card.tier-problem .dname { color: #8a1c1c; }
+  .diag-card.tier-possible .dname { color: #8a5a06; }
+  .diag-card .dcf { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: rgba(0,0,0,.08); }
+  .diag-card .ddesc { font-size: 12px; color: #555; margin-top: 4px; }
+  .diag-card .drec { font-size: 12px; color: #333; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,.08); }
+  .diag-card .drec b { color: #1a5a3a; }
+  .tier-badge { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 4px; }
+  .tier-problem .tier-badge { background: #8a1c1c; color: #fff; }
+  .tier-possible .tier-badge { background: #b7791f; color: #fff; }
+  .sev { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 700; }
+  .sev1 { background: #8a1c1c; color: #fff; }
+  .sev2 { background: #c05621; color: #fff; }
+  .sev3 { background: #b7791f; color: #fff; }
+  .sev4 { background: #718096; color: #fff; }
+  .ok-msg { color: #1a7a45; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eee; }
+  .trace-row { font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+  .trace-row .rid { font-weight: 600; color: #2b6cb0; }
+  .warn { color: #b7791f; font-size: 13px; }
+  pre.raw { font-size: 11px; background: #f7f7f5; padding: 10px; border-radius: 6px; overflow-x: auto; max-height: 300px; }
+  details summary { cursor: pointer; font-size: 13px; font-weight: 600; margin-top: 10px; }
+
+  #factsList { margin-top: 6px; }
+  .fact-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 9px; background: #f7f7f4; border: 1px solid #e5e4de; border-radius: 5px; margin-bottom: 6px; font-size: 13px; }
+  .fact-row .fname { font-family: ui-monospace, monospace; color: #2b6cb0; }
+  .fact-row .fval { color: #444; margin-left: 8px; }
+  #emptyFacts { color: #999; font-size: 12px; padding: 8px 0; }
+  #addFactBtn { margin-top: 4px; width: 100%; padding: 8px; }
+  #factPicker { display: none; margin-top: 8px; padding: 10px; background: #f0f4f9; border: 1px solid #cfe0f0; border-radius: 6px; }
+  #factPicker .picker-row { margin-bottom: 8px; }
+  #factPicker .picker-actions { display: flex; gap: 8px; margin-top: 4px; }
+  #factPicker .picker-actions button { flex: 1; padding: 7px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; font-size: 13px; }
+  #factPicker .picker-actions button.confirm { background: #2b6cb0; color: #fff; border-color: #2b6cb0; }
+
+</style>
+</head>
+<body>
+
+<div id="left">
+  <div class="titlebar">
+    <h2>Показники</h2>
+    <button class="help-btn" onclick="openHelp()" title="Довідка (F1)">?</button>
+  </div>
+  <div id="status">перевірка з'єднання...</div>
+
+  <div id="factsList"></div>
+  <div id="emptyFacts">Ще не додано жодного показника.</div>
+
+  <button class="plain" id="addFactBtn" onclick="showPicker()" title="Обрати гілку, факт і значення показника">+ Додати показник</button>
+
+  <div id="factPicker">
+    <div class="picker-row">
+      <label style="margin-top:0">Гілка</label>
+      <select id="pk-branch" onchange="onBranchChange()"></select>
+    </div>
+    <div class="picker-row">
+      <label style="margin-top:0">Факт</label>
+      <select id="pk-fact" onchange="onFactChange()"></select>
+    </div>
+    <div class="picker-row" id="pk-value-wrap">
+      <label style="margin-top:0">Значення</label>
+      <div id="pk-value-host"></div>
+    </div>
+    <div class="picker-actions">
+      <button class="confirm" onclick="confirmAddFact()">Додати</button>
+      <button onclick="hidePicker()">Скасувати</button>
+    </div>
+  </div>
+
+  <div class="chk"><input type="checkbox" id="includeTrace" checked> детальне трасування</div>
+  <div class="chk"><input type="checkbox" id="saveRun"> зберегти прогін в історію</div>
+  <label>Підпис прогону</label>
+  <input id="labelInput" placeholder="напр. перевірка після деплою" value="ручна перевірка">
+  <button class="primary" onclick="runDiagnose()" title="Прогнати показники через правила й показати діагнози">Діагностувати</button>
+  <div id="err"></div>
+
+  <div class="examples">
+    <label>Готові приклади</label>
+    <button class="plain" onclick="loadExample('healthy')">Усе в нормі</button>
+    <button class="plain" onclick="loadExample('memory')">Критичний витік памʼяті</button>
+    <button class="plain" onclick="loadExample('multi')">Кілька проблем одночасно</button>
+  </div>
+</div>
+
+<div id="right">
+  <div id="result"><p style="color:#888">Додай показники зліва й натисни «Діагностувати».</p></div>
+</div>
+
+
+<style>
+.ctx { position: fixed; z-index: 1000; min-width: 210px; background: #fff; border: 1px solid #b9b7ae; box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 4px 0; font-size: 13px; }
+.ctx div { padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+.ctx div:hover { background: #e6eefa; }
+.ctx hr { border: 0; border-top: 1px solid #e6e4dd; margin: 4px 0; }
+.ctx .danger { color: #b3261e; }
+</style>
+<script>
+const EMBEDDED = window.parent !== window;
+function reportContext(ctx) {
+  window.__ctx = ctx;
+  if (EMBEDDED) parent.postMessage({ type: "context", context: ctx }, "*");
+}
+function helpFor() {
+  if (EMBEDDED) parent.postMessage({ type: "help" }, "*");
+  else window.open("http://localhost:3000/", "_blank");
+}
+function hashParams() {
+  const p = {};
+  new URLSearchParams(location.hash.replace(/^#/, "")).forEach((v, k) => { p[k] = v; });
+  return p;
+}
+document.addEventListener("keydown", (e) => {
+  const forward = e.key === "F1" || e.key === "F5" || (e.ctrlKey && ["1", "2", "3"].includes(e.key));
+  if (!forward) return;
+  e.preventDefault();
+  if (EMBEDDED) parent.postMessage({ type: "key", key: e.key, ctrl: e.ctrlKey }, "*");
+  else if (e.key === "F1") helpFor();
+});
+window.addEventListener("message", (e) => {
+  const m = e.data || {};
+  if (m.type === "cmd" && typeof applyCommand === "function") applyCommand(m);
+});
+let __ctxEl = null;
+function hideCtx() { if (__ctxEl) { __ctxEl.remove(); __ctxEl = null; } }
+function showCtx(ev, items) {
+  ev.preventDefault();
+  hideCtx();
+  const m = document.createElement("div");
+  m.className = "ctx";
+  items.forEach((it) => {
+    if (it === "-") { m.appendChild(document.createElement("hr")); return; }
+    const d = document.createElement("div");
+    d.textContent = it.label;
+    if (it.danger) d.className = "danger";
+    d.onclick = () => { hideCtx(); it.run(); };
+    m.appendChild(d);
+  });
+  document.body.appendChild(m);
+  m.style.left = Math.max(0, Math.min(ev.clientX, innerWidth - m.offsetWidth - 4)) + "px";
+  m.style.top = Math.max(0, Math.min(ev.clientY, innerHeight - m.offsetHeight - 4)) + "px";
+  __ctxEl = m;
+}
+document.addEventListener("click", hideCtx);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && EMBEDDED) parent.postMessage({ type: "key", key: "Escape" }, "*"); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideCtx(); });
+window.addEventListener("blur", hideCtx);
+</script>
+<script>
+const API = "http://localhost:8000/api";
+
+async function api(path, opts) {
+  const res = await fetch(API + path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const msg = Array.isArray(data?.detail)
+      ? data.detail.map(d => (d.loc || []).join(".") + ": " + d.msg).join("; ")
+      : (data?.detail || res.statusText);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function esc(s) { return (s ?? "").toString().replace(/</g, "&lt;"); }
+
+async function checkStatus() {
+  const el = document.getElementById("status");
+  try {
+    const h = await api("/health");
+    el.className = h.mongo_connected ? "ok" : "err";
+    el.textContent = h.mongo_connected ? `З'єднано, ${h.rules_in_db ?? "?"} правил` : "Mongo не відповідає";
+  } catch (e) {
+    el.className = "err";
+    el.textContent = "Немає з'єднання з бекендом (localhost:8000)";
+  }
+}
+
+let metaFacts = [];
+let metaFactByName = {};
+let metaBranchOf = {};
+let metaBranches = [];
+let metaEnumValues = {};
+
+async function loadMeta() {
+  const [facts, rules] = await Promise.all([api("/facts"), api("/rules")]);
+  metaFacts = facts;
+  metaFactByName = {};
+  facts.forEach(f => { metaFactByName[f.name] = f; });
+
+  const branchSet = new Set();
+  rules.forEach(r => {
+    (r.conditions || []).forEach(c => {
+      if (c.fact && !(c.fact in metaBranchOf)) metaBranchOf[c.fact] = r.branch;
+      if (c.ref_fact && !(c.ref_fact in metaBranchOf)) metaBranchOf[c.ref_fact] = r.branch;
+      if (c.fact) {
+        const vals = (metaEnumValues[c.fact] = metaEnumValues[c.fact] || new Set());
+        if (typeof c.value === "string") vals.add(c.value);
+        if (Array.isArray(c.value)) c.value.forEach(v => { if (typeof v === "string") vals.add(v); });
+      }
+    });
+    (r.conclusions || []).forEach(c => {
+      if (c.fact && !(c.fact in metaBranchOf)) metaBranchOf[c.fact] = r.branch;
+      if (c.fact && typeof c.value === "string") {
+        const vals = (metaEnumValues[c.fact] = metaEnumValues[c.fact] || new Set());
+        vals.add(c.value);
+      }
+    });
+    branchSet.add(r.branch);
+  });
+
+  Object.keys(metaEnumValues).forEach(k => { metaEnumValues[k] = [...metaEnumValues[k]].sort(); });
+  metaBranches = [...branchSet].sort();
+
+  facts.forEach(f => { if (!(f.name in metaBranchOf)) metaBranchOf[f.name] = "Інше"; });
+  if (facts.some(f => metaBranchOf[f.name] === "Інше") && !metaBranches.includes("Інше")) {
+    metaBranches.push("Інше");
+  }
+}
+
+function factsOfBranch(branch) {
+  return metaFacts
+    .filter(f => metaBranchOf[f.name] === branch && f.kind === "raw")
+    .map(f => f.name)
+    .sort();
+}
+
+let selectedFacts = {};
+let factOrder = [];
+
+function renderFactsList() {
+  const host = document.getElementById("factsList");
+  const empty = document.getElementById("emptyFacts");
+  if (factOrder.length === 0) {
+    host.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+  host.innerHTML = factOrder.map(name => {
+    const val = selectedFacts[name];
+    const display = typeof val === "boolean" ? (val ? "true" : "false") : val;
+    return `<div class="fact-row" data-name="${esc(name)}" oncontextmenu="factMenu(event, this.dataset.name)">
+              <span><span class="fname">${esc(name)}</span><span class="fval">= ${esc(display)}</span></span>
+              <button class="small-x" onclick="removeFact('${esc(name)}')" title="Видалити">×</button>
+            </div>`;
+  }).join("");
+}
+
+function removeFact(name) {
+  delete selectedFacts[name];
+  factOrder = factOrder.filter(n => n !== name);
+  renderFactsList();
+}
+
+function setFact(name, value) {
+  if (!(name in selectedFacts)) factOrder.push(name);
+  selectedFacts[name] = value;
+  renderFactsList();
+}
+
+function showPicker() {
+  reportContext("diagnose.picker");
+  const branchSel = document.getElementById("pk-branch");
+  branchSel.innerHTML = metaBranches.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join("");
+  document.getElementById("factPicker").style.display = "block";
+  onBranchChange();
+}
+
+function hidePicker() {
+  reportContext("diagnose");
+  document.getElementById("factPicker").style.display = "none";
+}
+
+function onBranchChange() {
+  const branch = document.getElementById("pk-branch").value;
+  const factSel = document.getElementById("pk-fact");
+  const names = factsOfBranch(branch);
+  factSel.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+  onFactChange();
+}
+
+function onFactChange() {
+  const factName = document.getElementById("pk-fact").value;
+  const spec = metaFactByName[factName] || {};
+  const host = document.getElementById("pk-value-host");
+
+  if (spec.type === "bool") {
+    // bool - справді замкнений домен, звичайний select доречний
+    host.innerHTML = `<select id="pk-value"><option value="true">true</option><option value="false">false</option></select>`;
+  } else if (spec.type === "number") {
+    host.innerHTML = `<input id="pk-value" type="number" step="any" value="0">`;
+  } else {
+    // текстові/enum-факти - комбобокс (datalist), НЕ жорсткий select:
+    // список значень зібраний зі сканування правил і може бути НЕПОВНИМ
+    // (наприклад, якщо "нормальне" значення більше ніде явно не згадується
+    // після переходу на default-факти) - тому дозволяємо ввести будь-що,
+    // підказки лише допомагають, не обмежують
+    const known = metaEnumValues[factName] || [];
+    const dlId = "dl-" + factName.replace(/[^a-zA-Zа-яА-ЯїЇіІєЄʼ0-9]/g, "_");
+    host.innerHTML = `<input id="pk-value" list="${dlId}" placeholder="введи або обери значення">
+      <datalist id="${dlId}">${known.map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
+  }
+}
+
+function confirmAddFact() {
+  const factName = document.getElementById("pk-fact").value;
+  if (!factName) return;
+  const spec = metaFactByName[factName] || {};
+  const raw = document.getElementById("pk-value").value;
+
+  let value;
+  if (spec.type === "bool") value = raw === "true";
+  else if (spec.type === "number") value = parseFloat(raw);
+  else value = raw;
+
+  setFact(factName, value);
+  hidePicker();
+}
+
+async function runDiagnose() {
+  const errEl = document.getElementById("err");
+  errEl.textContent = "";
+
+  const body = {
+    facts: { ...selectedFacts },
+    include_trace: document.getElementById("includeTrace").checked,
+    save_run: document.getElementById("saveRun").checked,
+    label: document.getElementById("labelInput").value.trim(),
+  };
+
+  document.getElementById("result").innerHTML = "<p>Виконується...</p>";
+  try {
+    const r = await api("/diagnose", { method: "POST", body: JSON.stringify(body) });
+    renderResult(r);
+  } catch (e) {
+    document.getElementById("result").innerHTML = `<p style="color:#b3261e">Помилка: ${esc(e.message)}</p>`;
+  }
+}
+
+function renderResult(r) {
+  reportContext("diagnose.result");
+  const host = document.getElementById("result");
+  let html = "";
+
+  html += '<div class="card"><h2>Результат</h2>';
+  const details = r.diagnoses_detail || [];
+  if (details.length === 0) {
+    html += '<p class="ok-msg">Жодного діагнозу — система в нормі.</p>';
+  } else {
+    details.forEach(d => {
+      const tierClass = d.tier === "проблема" ? "tier-problem" : "tier-possible";
+      html += `<div class="diag-card ${tierClass}">
+        <div class="dhead">
+          <span class="dname">${esc(d.name)} <span class="tier-badge">${esc(d.tier)}</span></span>
+          <span class="dcf">${Math.round(d.cf * 100)}%</span>
+        </div>
+        ${d.description ? `<div class="ddesc">${esc(d.description)}</div>` : ""}
+        ${d.recommendation ? `<div class="drec"><b>Рекомендація:</b> ${esc(d.recommendation)}</div>` : ""}
+      </div>`;
+    });
+  }
+  if (r.severity) {
+    const sevClass = "sev" + r.severity.replace("SEV", "");
+    html += `<p style="margin-top:10px"><span class="sev ${sevClass}">${esc(r.severity)}</span>`;
+    if (r.problem_criticality != null) html += ` <span style="color:#888;font-size:12px">критичність: ${r.problem_criticality}</span>`;
+    html += `</p>`;
+  }
+  if (r.run_id) html += `<p style="color:#888;font-size:12px">run_id: ${esc(r.run_id)}</p>`;
+  html += '</div>';
+
+  if (r.conflicts && r.conflicts.length) {
+    html += '<div class="card"><h2 style="color:#b3261e">Конфлікти в базі знань</h2>';
+    html += '<table><tr><th>Факт</th><th>Залишено</th><th>Відхилено</th></tr>';
+    r.conflicts.forEach(c => {
+      html += `<tr><td>${esc(c.fact)}</td><td>${esc(c.kept_value)} (${esc(c.kept_by)})</td><td>${esc(c.rejected_value)} (${esc(c.rejected_by)})</td></tr>`;
+    });
+    html += '</table></div>';
+  }
+
+  if (r.errors && r.errors.length) {
+    html += '<div class="card"><h2 style="color:#b3261e">Помилки виконання</h2>';
+    r.errors.forEach(e => { html += `<p class="warn">${esc(e.where)}: ${esc(e.error)}</p>`; });
+    html += '</div>';
+  }
+
+  if (r.missing_raw_facts && r.missing_raw_facts.length) {
+    html += `<div class="card"><h2>Неподані вхідні факти (${r.missing_raw_facts.length})</h2>
+      <details><summary>показати список</summary>
+      <p style="font-size:12px;color:#777">${r.missing_raw_facts.map(esc).join(", ")}</p>
+      </details></div>`;
+  }
+
+  if (r.unknown_input_facts && r.unknown_input_facts.length) {
+    html += `<div class="card"><h2 style="color:#b7791f">Невідомі вхідні факти</h2>
+      <p class="warn">${r.unknown_input_facts.map(esc).join(", ")} — таких фактів немає в базі знань, проігноровано.</p></div>`;
+  }
+
+  if (r.fired_rules && r.fired_rules.length) {
+    html += `<div class="card"><h2>Спрацьовані правила (${r.fired_rules.length})</h2>`;
+    r.fired_rules.forEach(fr => {
+      html += `<div class="trace-row"><span class="rid">${esc(fr.id)}</span>
+        <span style="color:#888">[${esc(fr.branch)}, шар ${fr.layer}, ітерація ${fr.iteration}]</span><br>
+        ${esc(fr.text)}<br>
+        → ${fr.produced.map(p => `${esc(p.fact)} = ${esc(p.value)}`).join(", ")}</div>`;
+    });
+    html += '</div>';
+  }
+
+  html += `<div class="card"><details><summary>Повний знімок робочої пам'яті (facts)</summary>
+    <pre class="raw">${esc(JSON.stringify(r.facts, null, 2))}</pre></details></div>`;
+
+  if (r.trace && r.trace.length) {
+    html += `<div class="card"><details><summary>Повне трасування (${r.trace.length} записів, сирий JSON)</summary>
+      <pre class="raw">${esc(JSON.stringify(r.trace, null, 2))}</pre></details></div>`;
+  }
+
+  host.innerHTML = html;
+}
+
+const EXAMPLES = {
+  healthy: {
+    "доступна_памʼять_%": 55, "кількість_swap_операцій": 0,
+    "тренд_використання_RAM": "стабільний",
+    "load_average_1хв": 1.0, "nproc": 4, "завантаження_CPU_%": 25,
+    "температура_CPU": 52,
+  },
+  memory: {
+    "доступна_памʼять_%": 6, "кількість_swap_операцій": 500,
+    "тренд_використання_RAM": "монотонно_зростає",
+    "тривалість_симптому_хв": 45, "критичність_сервісу": 5,
+  },
+  multi: {
+    "доступна_памʼять_%": 8, "кількість_swap_операцій": 400,
+    "тренд_використання_RAM": "монотонно_зростає",
+    "заповненість_диска_%": 93, "IOPS_поточні": 200, "IOPS_базова_лінія": 1000,
+    "тренд_росту_файлів": "швидкий",
+    "наявність_блокувань_deadlocks": true, "кількість_deadlocks_10хв": 7,
+    "тренд_черги_транзакцій": "монотонно_зростає",
+    "тривалість_симптому_хв": 30, "критичність_сервісу": 4,
+  },
+};
+
+function loadExample(key) {
+  selectedFacts = {};
+  factOrder = [];
+  Object.entries(EXAMPLES[key]).forEach(([name, value]) => {
+    factOrder.push(name);
+    selectedFacts[name] = value;
+  });
+  renderFactsList();
+}
+
+function openHelp() { helpFor(); }
+
+async function init() {
+  checkStatus();
+  try {
+    await loadMeta();
+  } catch (e) {
+    document.getElementById("emptyFacts").textContent = "Не вдалось завантажити список фактів: " + e.message;
+  }
+  const p = hashParams();
+  applyCommand(p.example || p.clear ? p : { example: "memory" });
+  reportContext("diagnose");
+}
+
+function applyCommand(m) {
+  if (m.clear) {
+    selectedFacts = {};
+    factOrder = [];
+    renderFactsList();
+    document.getElementById("result").innerHTML = '<p style="color:#888">Додай показники зліва й натисни «Діагностувати».</p>';
+    reportContext("diagnose");
+  } else if (m.example && EXAMPLES[m.example]) {
+    loadExample(m.example);
+  }
+}
+
+function factMenu(ev, name) {
+  showCtx(ev, [
+    { label: "Видалити показник", danger: true, run: () => removeFact(name) },
+    "-",
+    { label: "Довідка про показники", run: () => helpFor() },
+  ]);
+}
+
+init();
+</script>
+</body>
+</html>

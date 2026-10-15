@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Редактор бази знань (міні)</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; background: #f5f5f2; color: #222; }
+  #sidebar { width: 320px; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; display: flex; flex-direction: column; }
+  #sidebar h2 { font-size: 14px; padding: 12px 14px 4px; margin: 0; }
+  #status { font-size: 12px; padding: 6px 14px; }
+  #status.ok { color: #1a7a45; }
+  #status.err { color: #b3261e; }
+  #tabbar { display: flex; border-bottom: 1px solid #ddd; }
+  #tabbar button { flex: 1; padding: 8px; border: none; background: #eee; cursor: pointer; font-size: 13px; }
+  #tabbar button.active { background: #fff; font-weight: 600; border-bottom: 2px solid #2b6cb0; }
+  #list { flex: 1; overflow-y: auto; }
+  .item { padding: 8px 14px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 13px; }
+  .item:hover { background: #f0f0f0; }
+  .item.active { background: #e3edf9; }
+  .item .id { font-weight: 600; color: #2b6cb0; }
+  .item .sub { color: #777; font-size: 11px; }
+  #newBtn { margin: 10px 14px; padding: 8px; cursor: pointer; }
+  #main { flex: 1; padding: 20px; overflow-y: auto; }
+  label { display: block; font-size: 12px; font-weight: 600; margin: 10px 0 3px; color: #555; }
+  input, select, textarea { width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 13px; }
+  textarea { font-family: ui-monospace, monospace; min-height: 90px; }
+  .help-btn { background: #eef4fb; border: 1px solid #bcd6ef; color: #2b6cb0; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; font-weight: 700; cursor: pointer; line-height: 1; padding: 0; margin-left: 6px; }
+  #toolbar { display: flex; align-items: center; }
+  .subtext { font-size: 11px; color: #888; margin-top: 3px; }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  button.primary { background: #2b6cb0; color: #fff; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; margin-top: 14px; }
+  button.danger { background: #b3261e; color: #fff; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; margin-top: 14px; margin-left: 8px; }
+  button.plain { background: #eee; border: 1px solid #ccc; padding: 9px 16px; border-radius: 4px; cursor: pointer; margin-top: 14px; margin-left: 8px; }
+  #err { color: #b3261e; font-size: 13px; white-space: pre-wrap; margin-top: 8px; }
+  #validateResult { margin-top: 16px; font-size: 13px; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 12px; white-space: pre-wrap; }
+  .hint { color: #888; font-size: 11px; margin-top: 3px; }
+
+  .cond-row, .concl-row {
+    display: flex; gap: 7px; align-items: flex-end;
+    padding: 8px; margin-bottom: 7px;
+    background: #f7f7f4; border: 1px solid #e5e4de; border-radius: 6px;
+  }
+  .cond-row .c-fact { flex: 2.2; min-width: 0; }
+  .cond-row .c-op { flex: 0 0 95px; }
+  .cond-row .c-mode { flex: 0 0 105px; }
+  .cond-row .c-value { flex: 1.6; min-width: 0; }
+  .cond-row .c-factor { flex: 0 0 70px; }
+  .concl-row .x-fact { flex: 2; min-width: 0; }
+  .concl-row .x-value { flex: 2; min-width: 0; }
+  .cond-row select, .cond-row input, .concl-row select, .concl-row input {
+    width: 100%; padding: 6px 7px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px;
+  }
+  .mini-label { display: block; font-size: 10px; color: #999; margin-bottom: 2px; }
+  .row-del { background: none; border: none; color: #b3261e; font-size: 16px; cursor: pointer; padding: 0 4px 6px; line-height: 1; }
+  .preview-box {
+    font-family: ui-monospace, monospace; font-size: 12px; background: #f2f1ec;
+    border: 1px solid #ddd; border-left: 3px solid #2b6cb0; border-radius: 6px;
+    padding: 9px 11px; white-space: pre-wrap; word-break: break-word; margin-top: 4px;
+  }
+  button.ghost { background: none; border: 1px dashed #bbb; color: #777; padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="status">перевірка з'єднання...</div>
+  <div id="tabbar">
+    <button id="tabRules" class="active" title="Правила виводу: умови і висновки">Правила</button>
+    <button id="tabFacts" title="Факти: вхідні показники та проміжні стани">Факти</button>
+    <button id="tabDiagnoses" title="Довідник діагнозів: назва, критичність, рекомендація">Діагнози</button>
+    <button class="help-btn" onclick="openHelp()" title="Довідка (F1)">?</button>
+  </div>
+  <button id="newBtn" title="Створити новий елемент на активній вкладці">+ Створити</button>
+  <div id="list"></div>
+</div>
+
+<div id="main">
+  <div id="form"></div>
+  <button id="validateBtn" class="plain" title="Знайти помилки в правилах і фактах без запуску діагностики">Перевірити базу знань</button>
+  <div id="validateResult"></div>
+</div>
+
+
+<style>
+.ctx { position: fixed; z-index: 1000; min-width: 210px; background: #fff; border: 1px solid #b9b7ae; box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 4px 0; font-size: 13px; }
+.ctx div { padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+.ctx div:hover { background: #e6eefa; }
+.ctx hr { border: 0; border-top: 1px solid #e6e4dd; margin: 4px 0; }
+.ctx .danger { color: #b3261e; }
+</style>
+<script>
+const EMBEDDED = window.parent !== window;
+function reportContext(ctx) {
+  window.__ctx = ctx;
+  if (EMBEDDED) parent.postMessage({ type: "context", context: ctx }, "*");
+}
+function helpFor() {
+  if (EMBEDDED) parent.postMessage({ type: "help" }, "*");
+  else window.open("http://localhost:3000/", "_blank");
+}
+function hashParams() {
+  const p = {};
+  new URLSearchParams(location.hash.replace(/^#/, "")).forEach((v, k) => { p[k] = v; });
+  return p;
+}
+document.addEventListener("keydown", (e) => {
+  const forward = e.key === "F1" || e.key === "F5" || (e.ctrlKey && ["1", "2", "3"].includes(e.key));
+  if (!forward) return;
+  e.preventDefault();
+  if (EMBEDDED) parent.postMessage({ type: "key", key: e.key, ctrl: e.ctrlKey }, "*");
+  else if (e.key === "F1") helpFor();
+});
+window.addEventListener("message", (e) => {
+  const m = e.data || {};
+  if (m.type === "cmd" && typeof applyCommand === "function") applyCommand(m);
+});
+let __ctxEl = null;
+function hideCtx() { if (__ctxEl) { __ctxEl.remove(); __ctxEl = null; } }
+function showCtx(ev, items) {
+  ev.preventDefault();
+  hideCtx();
+  const m = document.createElement("div");
+  m.className = "ctx";
+  items.forEach((it) => {
+    if (it === "-") { m.appendChild(document.createElement("hr")); return; }
+    const d = document.createElement("div");
+    d.textContent = it.label;
+    if (it.danger) d.className = "danger";
+    d.onclick = () => { hideCtx(); it.run(); };
+    m.appendChild(d);
+  });
+  document.body.appendChild(m);
+  m.style.left = Math.max(0, Math.min(ev.clientX, innerWidth - m.offsetWidth - 4)) + "px";
+  m.style.top = Math.max(0, Math.min(ev.clientY, innerHeight - m.offsetHeight - 4)) + "px";
+  __ctxEl = m;
+}
+document.addEventListener("click", hideCtx);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && EMBEDDED) parent.postMessage({ type: "key", key: "Escape" }, "*"); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideCtx(); });
+window.addEventListener("blur", hideCtx);
+</script>
+<script>
+const API = "http://localhost:8000/api";
+let tab = "rules";
+let rules = [], facts = [], diagnosesCatalog = [];
+let selectedId = null;
+
+async function api(path, opts) {
+  const res = await fetch(API + path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (res.status === 204) return null;
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const msg = Array.isArray(data?.detail)
+      ? data.detail.map(d => (d.loc || []).join(".") + ": " + d.msg).join("; ")
+      : (data?.detail || res.statusText);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+async function checkStatus() {
+  const el = document.getElementById("status");
+  try {
+    const h = await api("/health");
+    el.className = h.mongo_connected ? "ok" : "err";
+    el.textContent = h.mongo_connected
+      ? `OK, ${h.rules_in_db ?? "?"} правил`
+      : "Mongo не відповідає: " + h.mongo_message;
+  } catch (e) {
+    el.className = "err";
+    el.textContent = "Немає з'єднання з бекендом";
+  }
+}
+
+async function loadAll() {
+  rules = await api("/rules").catch(() => []);
+  facts = await api("/facts").catch(() => []);
+  diagnosesCatalog = await api("/diagnoses").catch(() => []);
+  computeMeta();
+  renderList();
+}
+
+function renderList() {
+  const host = document.getElementById("list");
+  host.innerHTML = "";
+  const items = tab === "rules" ? rules : (tab === "facts" ? facts : diagnosesCatalog);
+  items.forEach(it => {
+    const div = document.createElement("div");
+    div.className = "item" + (it._id === selectedId ? " active" : "");
+    if (tab === "rules") {
+      const typeLabel = it.rule_type === "diagnostic" ? "діагностичне" : "проміжне";
+      div.innerHTML = `<div class="id">${esc(it.id)}</div><div class="sub">${esc(it.branch)} · шар ${it.layer} · ${typeLabel}</div>`;
+    } else if (tab === "facts") {
+      div.innerHTML = `<div class="id">${esc(it.name)}</div><div class="sub">${esc(it.kind)}</div>`;
+    } else {
+      div.innerHTML = `<div class="id">${esc(it.name)}</div><div class="sub">${esc(it.code)} · критичність ${it.criticality}</div>`;
+    }
+    div.onclick = () => select(it._id);
+    div.oncontextmenu = (ev) => { select(it._id); showCtx(ev, itemMenu(it)); };
+    host.appendChild(div);
+  });
+}
+
+function esc(s) { return (s ?? "").toString().replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+
+/* ---------------- метадані для конструктора умов ---------------- */
+
+const OPERATORS = [
+  { op: "<",        label: "<",        needs: "value" },
+  { op: "<=",       label: "≤",        needs: "value" },
+  { op: ">",        label: ">",        needs: "value" },
+  { op: ">=",       label: "≥",        needs: "value" },
+  { op: "==",       label: "=",        needs: "value" },
+  { op: "!=",       label: "≠",        needs: "value" },
+  { op: "in",       label: "серед",    needs: "list"  },
+  { op: "not_in",   label: "не серед", needs: "list"  },
+  { op: "is_true",  label: "= true",   needs: "none"  },
+  { op: "is_false", label: "= false",  needs: "none"  },
+  { op: "contains", label: "містить",  needs: "value" },
+];
+const OP_TEXT = { "<":"<","<=":"<=",">":">",">=":">=","==":"=","!=":"!=",
+                  in:"IN",not_in:"NOT IN",is_true:"== true",is_false:"== false",contains:"містить" };
+
+function opNeeds(op) { return (OPERATORS.find(o => o.op === op) || {}).needs || "value"; }
+
+let metaFactByName = {};
+let metaEnumValues = {};
+
+function computeMeta() {
+  metaFactByName = {};
+  facts.forEach(f => { metaFactByName[f.name] = f; });
+
+  metaEnumValues = {};
+  const collect = (factName, value) => {
+    if (!factName) return;
+    const set = (metaEnumValues[factName] = metaEnumValues[factName] || new Set());
+    if (typeof value === "string") set.add(value);
+    if (Array.isArray(value)) value.forEach(v => { if (typeof v === "string") set.add(v); });
+  };
+  rules.forEach(r => {
+    (r.conditions || []).forEach(c => collect(c.fact, c.value));
+    (r.conclusions || []).forEach(c => collect(c.fact, c.value));
+  });
+  Object.keys(metaEnumValues).forEach(k => { metaEnumValues[k] = [...metaEnumValues[k]].sort(); });
+}
+
+function factOptionsHtml(selected) {
+  const names = facts.map(f => f.name).sort();
+  return names.map(n => `<option value="${esc(n)}" ${n === selected ? "selected" : ""}>${esc(n)}</option>`).join("");
+}
+
+function valueFieldHtml(idPrefix, factName, currentValue, isList) {
+  const spec = metaFactByName[factName] || {};
+  const known = metaEnumValues[factName] || [];
+  const cur = isList
+    ? (Array.isArray(currentValue) ? currentValue.join(", ") : "")
+    : (currentValue === undefined || currentValue === null ? "" : currentValue);
+
+  if (isList) {
+    const dl = idPrefix + "-dl";
+    return `<input id="${idPrefix}-value" value="${esc(cur)}" placeholder="через кому"
+              list="${dl}"><datalist id="${dl}">${known.map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
+  }
+  if (spec.type === "bool") {
+    const sel = String(cur);
+    return `<select id="${idPrefix}-value">
+              <option value="true" ${sel === "true" ? "selected" : ""}>true</option>
+              <option value="false" ${sel === "false" ? "selected" : ""}>false</option>
+            </select>`;
+  }
+  if (spec.type === "number") {
+    return `<input id="${idPrefix}-value" type="number" step="any" value="${esc(cur)}">`;
+  }
+  const dl = idPrefix + "-dl";
+  return `<input id="${idPrefix}-value" value="${esc(cur)}" placeholder="значення" list="${dl}">
+          <datalist id="${dl}">${known.map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
+}
+
+let condSeq = 0;
+
+function conditionRowHtml(cond) {
+  cond = cond || {};
+  const rid = "cnd" + (condSeq++);
+  const op = cond.op || "==";
+  const needs = opNeeds(op);
+  const isRef = !!cond.ref_fact;
+
+  return `
+  <div class="cond-row" data-rid="${rid}">
+    <div class="c-fact">
+      <span class="mini-label">факт</span>
+      <select id="${rid}-fact" onchange="onCondFactChange('${rid}')">${factOptionsHtml(cond.fact)}</select>
+    </div>
+    <div class="c-op">
+      <span class="mini-label">оператор</span>
+      <select id="${rid}-op" onchange="onCondOpChange('${rid}')">
+        ${OPERATORS.map(o => `<option value="${o.op}" ${o.op === op ? "selected" : ""}>${o.label}</option>`).join("")}
+      </select>
+    </div>
+    <div class="c-mode">
+      <span class="mini-label">з чим</span>
+      <select id="${rid}-mode" onchange="onCondModeChange('${rid}')" ${needs === "none" ? "disabled" : ""}>
+        <option value="const" ${!isRef ? "selected" : ""}>константа</option>
+        <option value="ref" ${isRef ? "selected" : ""}>інший факт</option>
+      </select>
+    </div>
+    <div class="c-value" id="${rid}-value-wrap">
+      <span class="mini-label">значення</span>
+      <div id="${rid}-value-host"></div>
+    </div>
+    <div class="c-factor" id="${rid}-factor-wrap" style="${isRef ? "" : "display:none"}">
+      <span class="mini-label">× множник</span>
+      <input id="${rid}-factor" type="number" step="0.1" value="${cond.factor ?? 1}">
+    </div>
+    <button type="button" class="row-del" onclick="removeCondRow('${rid}')" title="Видалити умову">×</button>
+  </div>`;
+}
+
+function renderCondValueArea(rid, cond) {
+  cond = cond || {};
+  const op = document.getElementById(`${rid}-op`).value;
+  const mode = document.getElementById(`${rid}-mode`).value;
+  const needs = opNeeds(op);
+  const factName = document.getElementById(`${rid}-fact`).value;
+
+  const valueHost = document.getElementById(`${rid}-value-host`);
+  const factorWrap = document.getElementById(`${rid}-factor-wrap`);
+
+  if (needs === "none") {
+    valueHost.innerHTML = "";
+    factorWrap.style.display = "none";
+    return;
+  }
+  if (mode === "ref") {
+    const numberFacts = facts.filter(f => f.type === "number").map(f => f.name).sort();
+    valueHost.innerHTML = `<select id="${rid}-value">` +
+      numberFacts.map(n => `<option value="${esc(n)}" ${n === cond.ref_fact ? "selected" : ""}>${esc(n)}</option>`).join("") +
+      `</select>`;
+    factorWrap.style.display = "";
+  } else {
+    factorWrap.style.display = "none";
+    valueHost.innerHTML = valueFieldHtml(rid, factName, cond.value, needs === "list");
+  }
+}
+
+function onCondFactChange(rid) { renderCondValueArea(rid); updatePreview(); }
+function onCondOpChange(rid) {
+  const needs = opNeeds(document.getElementById(`${rid}-op`).value);
+  document.getElementById(`${rid}-mode`).disabled = (needs === "none");
+  renderCondValueArea(rid);
+  updatePreview();
+}
+function onCondModeChange(rid) { renderCondValueArea(rid); updatePreview(); }
+
+function removeCondRow(rid) {
+  document.querySelector(`.cond-row[data-rid="${rid}"]`).remove();
+  updatePreview();
+}
+
+function addCondRow(cond) {
+  document.getElementById("conds").insertAdjacentHTML("beforeend", conditionRowHtml(cond));
+  const row = document.querySelector(".cond-row:last-child");
+  const rid = row.dataset.rid;
+  renderCondValueArea(rid, cond || {});
+  updatePreview();
+}
+
+function parseScalar(text) {
+  if (text === "true") return true;
+  if (text === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(text)) return Number(text);
+  return text;
+}
+
+function collectConditions() {
+  return Array.from(document.querySelectorAll(".cond-row")).map(row => {
+    const rid = row.dataset.rid;
+    const fact = document.getElementById(`${rid}-fact`).value;
+    const op = document.getElementById(`${rid}-op`).value;
+    const needs = opNeeds(op);
+    const cond = { fact, op };
+    if (needs === "none") return cond;
+
+    const mode = document.getElementById(`${rid}-mode`).value;
+    if (mode === "ref") {
+      cond.ref_fact = document.getElementById(`${rid}-value`).value;
+      cond.factor = parseFloat(document.getElementById(`${rid}-factor`).value) || 1;
+    } else if (needs === "list") {
+      cond.value = document.getElementById(`${rid}-value`).value
+        .split(",").map(s => s.trim()).filter(Boolean).map(parseScalar);
+    } else {
+      cond.value = parseScalar(document.getElementById(`${rid}-value`).value);
+    }
+    return cond;
+  });
+}
+
+/* ---------------- висновки ---------------- */
+
+function conclusionRowHtml(concl) {
+  concl = concl || {};
+  const rid = "cnc" + (condSeq++);
+  return `
+  <div class="concl-row" data-rid="${rid}">
+    <div class="x-fact">
+      <span class="mini-label">факт</span>
+      <select id="${rid}-fact" onchange="onConclFactChange('${rid}')">${factOptionsHtml(concl.fact)}</select>
+    </div>
+    <div class="x-value">
+      <span class="mini-label">значення</span>
+      <div id="${rid}-value-host"></div>
+    </div>
+    <button type="button" class="row-del" onclick="removeConclRow('${rid}')" title="Видалити висновок">×</button>
+  </div>`;
+}
+
+function renderConclValueArea(rid, concl) {
+  concl = concl || {};
+  const factName = document.getElementById(`${rid}-fact`).value;
+  document.getElementById(`${rid}-value-host`).innerHTML = valueFieldHtml(rid, factName, concl.value, false);
+}
+
+function onConclFactChange(rid) { renderConclValueArea(rid); updatePreview(); }
+
+function removeConclRow(rid) {
+  document.querySelector(`.concl-row[data-rid="${rid}"]`).remove();
+  updatePreview();
+}
+
+function addConclRow(concl) {
+  document.getElementById("concls").insertAdjacentHTML("beforeend", conclusionRowHtml(concl));
+  const row = document.querySelector(".concl-row:last-child");
+  const rid = row.dataset.rid;
+  renderConclValueArea(rid, concl || {});
+  updatePreview();
+}
+
+function collectConclusions() {
+  return Array.from(document.querySelectorAll(".concl-row")).map(row => {
+    const rid = row.dataset.rid;
+    return {
+      fact: document.getElementById(`${rid}-fact`).value,
+      value: parseScalar(document.getElementById(`${rid}-value`).value),
+    };
+  });
+}
+
+/* ---------------- читабельний текст ЯКЩО-ТО (лише прев'ю) ---------------- */
+
+function quoteIfString(v) { return typeof v === "string" ? `"${v}"` : String(v); }
+
+function conditionToText(cond) {
+  const needs = opNeeds(cond.op);
+  if (needs === "none") return `${cond.fact} ${OP_TEXT[cond.op]}`;
+  if (cond.ref_fact) {
+    const f = cond.factor && cond.factor !== 1 ? `${cond.ref_fact}*${cond.factor}` : cond.ref_fact;
+    return `${cond.fact} ${OP_TEXT[cond.op]} ${f}`;
+  }
+  if (needs === "list") {
+    const items = Array.isArray(cond.value) ? cond.value : [cond.value];
+    return `${cond.fact} ${OP_TEXT[cond.op]} (${items.map(quoteIfString).join(", ")})`;
+  }
+  return `${cond.fact} ${OP_TEXT[cond.op]} ${quoteIfString(cond.value)}`;
+}
+
+function updatePreview() {
+  const box = document.getElementById("rulePreview");
+  if (!box) return;
+  const ruleTypeSel = document.getElementById("f-rule-type");
+  const ruleType = ruleTypeSel ? ruleTypeSel.value : "intermediate";
+  const conds = collectConditions().filter(c => c.fact).map(conditionToText).join(" І ");
+
+  let concls;
+  if (ruleType === "diagnostic") {
+    const codeSel = document.getElementById("f-diag-code");
+    const code = codeSel ? codeSel.value : "";
+    concls = code ? `діагноз = ${quoteIfString(code)}` : "";
+  } else {
+    concls = collectConclusions().filter(c => c.fact).map(c => `${c.fact} = ${quoteIfString(c.value)}`).join(", ");
+  }
+  box.textContent = (conds || concls) ? `ЯКЩО ${conds || "…"} ТО ${concls || "…"}` : "";
+}
+
+function select(id) {
+  selectedId = id;
+  renderList();
+  if (tab === "rules") renderRuleForm(rules.find(r => r._id === id));
+  else if (tab === "facts") renderFactForm(facts.find(f => f._id === id));
+  else renderDiagnosisForm(diagnosesCatalog.find(d => d._id === id));
+}
+
+function renderRuleForm(r) {
+  if (!r) { document.getElementById("form").innerHTML = "<p>Оберіть правило зліва.</p>"; return; }
+  const ruleType = r.rule_type || "intermediate";
+  const cf = r.cf != null ? r.cf : 1.0;
+  const diagCode = ruleType === "diagnostic" && r.conclusions && r.conclusions[0]
+    ? r.conclusions[0].value : "";
+
+  document.getElementById("form").innerHTML = `
+    <h2>${esc(r.id)}</h2>
+    <div class="row">
+      <div><label>ID</label><input id="f-id" value="${esc(r.id)}" placeholder="напр. Пр-99"></div>
+      <div><label>Гілка</label><input id="f-branch" value="${esc(r.branch)}" placeholder="RAM / CPU / Диск..."></div>
+      <div style="flex:0 0 80px"><label>Шар</label><input id="f-layer" type="number" value="${r.layer}"></div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Тип правила</label>
+        <select id="f-rule-type" onchange="onRuleTypeChange()">
+          <option value="intermediate" ${ruleType === "intermediate" ? "selected" : ""}>Проміжне (виводить стан)</option>
+          <option value="diagnostic" ${ruleType === "diagnostic" ? "selected" : ""}>Діагностичне (ставить діагноз)</option>
+        </select>
+        <div class="subtext">Проміжне: тиск_на_памʼять = критичний. Діагностичне: обирає готовий діагноз з довідника.</div>
+      </div>
+      <div style="flex:0 0 160px">
+        <label>Впевненість (CF)</label>
+        <input id="f-cf" type="number" min="0" max="1" step="0.05" value="${cf}">
+        <div class="subtext">0-1. Кілька незалежних правил на той самий діагноз комбінуються.</div>
+      </div>
+    </div>
+
+    <label>Умови (з'єднані через І)</label>
+    <div id="conds"></div>
+    <button type="button" class="ghost" onclick="addCondRow()">+ додати умову</button>
+
+    <div id="concl-intermediate" style="${ruleType === "diagnostic" ? "display:none" : ""}">
+      <label style="margin-top:16px">Висновки</label>
+      <div id="concls"></div>
+      <button type="button" class="ghost" onclick="addConclRow()">+ додати висновок</button>
+    </div>
+
+    <div id="concl-diagnostic" style="${ruleType === "diagnostic" ? "" : "display:none"}">
+      <label style="margin-top:16px">Діагноз</label>
+      <select id="f-diag-code" onchange="updatePreview()">${diagnosisOptionsHtml(diagCode)}</select>
+      <div class="subtext">Немає потрібного діагнозу в списку? Додай його на вкладці «Діагнози».</div>
+    </div>
+
+    <label>Читабельний текст (генерується автоматично)</label>
+    <div class="preview-box" id="rulePreview"></div>
+
+    <label>Примітка</label>
+    <input id="f-note" value="${esc(r.note || "")}" placeholder="необовʼязково">
+    <label><input type="checkbox" id="f-enabled" ${r.enabled ? "checked" : ""} style="width:auto"> увімкнено</label>
+    <div id="err"></div>
+    <button class="primary" onclick="saveRule('${r._id}')">Зберегти</button>
+    <button class="danger" onclick="deleteRule('${r._id}')">Видалити</button>
+  `;
+
+  (r.conditions || []).forEach(c => addCondRow(c));
+  if (ruleType !== "diagnostic") {
+    (r.conclusions || []).forEach(c => addConclRow(c));
+    if (!r.conclusions || !r.conclusions.length) addConclRow();
+  }
+  if (!r.conditions || !r.conditions.length) addCondRow();
+  updatePreview();
+}
+
+function diagnosisOptionsHtml(selectedCode) {
+  const sorted = [...diagnosesCatalog].sort((a, b) => a.name.localeCompare(b.name, "uk"));
+  if (!sorted.length) return '<option value="">(довідник діагнозів порожній)</option>';
+  return sorted.map(d =>
+    `<option value="${esc(d.code)}" ${d.code === selectedCode ? "selected" : ""}>${esc(d.name)} (${esc(d.code)})</option>`
+  ).join("");
+}
+
+function onRuleTypeChange() {
+  const ruleType = document.getElementById("f-rule-type").value;
+  document.getElementById("concl-intermediate").style.display = ruleType === "diagnostic" ? "none" : "";
+  document.getElementById("concl-diagnostic").style.display = ruleType === "diagnostic" ? "" : "none";
+  if (ruleType === "diagnostic" && !document.getElementById("concls").children.length) {
+    // порожньо - нема потреби у висновках-рядках взагалі для діагностичного правила
+  }
+  updatePreview();
+}
+
+function renderFactForm(f) {
+  if (!f) { document.getElementById("form").innerHTML = "<p>Оберіть факт зліва.</p>"; return; }
+  const hasDefault = f.default !== undefined && f.default !== null;
+  document.getElementById("form").innerHTML = `
+    <h2>${esc(f.name)}</h2>
+    <div class="row">
+      <div><label>Назва</label><input id="x-name" value="${esc(f.name)}" placeholder="напр. новий_показник_%"></div>
+      <div><label>Вид</label>
+        <select id="x-kind">
+          <option value="raw" ${f.kind === "raw" ? "selected" : ""}>raw (вхідний показник)</option>
+          <option value="derived" ${f.kind === "derived" ? "selected" : ""}>derived (проміжний стан)</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>Тип</label><input id="x-type" value="${esc(f.type || "")}"></div>
+      <div><label>Одиниця</label><input id="x-unit" value="${esc(f.unit || "")}"></div>
+    </div>
+    <input type="hidden" id="x-agg" value="${esc(f.aggregation || "")}">
+
+    <label><input type="checkbox" id="x-has-default" style="width:auto" ${hasDefault ? "checked" : ""}
+      onchange="onDefaultToggle('${esc(f.name)}')"> значення за замовчуванням
+      <span class="subtext" style="display:inline">(факт отримує це значення ДО старту виводу, якщо жодне правило його не встановить — лише для derived)</span>
+    </label>
+    <div id="x-default-wrap" style="${hasDefault ? "" : "display:none"}">
+      <div id="x-default-host"></div>
+    </div>
+
+    <label>Примітка</label>
+    <input id="x-note" value="${esc(f.note || "")}">
+    <div id="err"></div>
+    <button class="primary" onclick="saveFact('${f._id}')">Зберегти</button>
+    <button class="danger" onclick="deleteFact('${f._id}')">Видалити</button>
+  `;
+
+  if (hasDefault) {
+    document.getElementById("x-default-host").innerHTML = valueFieldHtml("x-default", f.name, f.default, false);
+  }
+}
+
+function onDefaultToggle(factName) {
+  const checked = document.getElementById("x-has-default").checked;
+  const wrap = document.getElementById("x-default-wrap");
+  wrap.style.display = checked ? "" : "none";
+  if (checked) {
+    document.getElementById("x-default-host").innerHTML = valueFieldHtml("x-default", factName, undefined, false);
+  }
+}
+
+async function saveRule(id) {
+  const errEl = document.getElementById("err");
+  errEl.textContent = "";
+
+  const conditions = collectConditions().filter(c => c.fact);
+  if (!conditions.length) { errEl.textContent = "Додай хоча б одну умову."; return; }
+
+  const ruleType = document.getElementById("f-rule-type").value;
+  let conclusions;
+  if (ruleType === "diagnostic") {
+    const code = document.getElementById("f-diag-code").value;
+    if (!code) { errEl.textContent = "Обери діагноз зі списку (або спершу додай його на вкладці «Діагнози»)."; return; }
+    conclusions = [{ fact: "діагноз", value: code }];
+  } else {
+    conclusions = collectConclusions().filter(c => c.fact);
+    if (!conclusions.length) { errEl.textContent = "Додай хоча б один висновок."; return; }
+  }
+
+  const cf = parseFloat(document.getElementById("f-cf").value);
+  if (isNaN(cf) || cf < 0 || cf > 1) { errEl.textContent = "Впевненість (CF) має бути числом від 0 до 1."; return; }
+
+  const body = {
+    id: document.getElementById("f-id").value.trim(),
+    branch: document.getElementById("f-branch").value.trim(),
+    layer: parseInt(document.getElementById("f-layer").value) || 1,
+    conditions, conclusions,
+    rule_type: ruleType,
+    cf: cf,
+    text: document.getElementById("rulePreview").textContent,
+    note: document.getElementById("f-note").value.trim(),
+    enabled: document.getElementById("f-enabled").checked,
+  };
+  try {
+    await api(`/rules/${id}`, { method: "PUT", body: JSON.stringify(body) });
+    await loadAll();
+    select(id);
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+}
+
+async function deleteRule(id) {
+  if (!confirm("Видалити правило?")) return;
+  await api(`/rules/${id}`, { method: "DELETE" });
+  selectedId = null;
+  await loadAll();
+  document.getElementById("form").innerHTML = "";
+}
+
+async function saveFact(id) {
+  const errEl = document.getElementById("err");
+  const body = {
+    name: document.getElementById("x-name").value.trim(),
+    kind: document.getElementById("x-kind").value.trim(),
+    type: document.getElementById("x-type").value.trim() || null,
+    aggregation: document.getElementById("x-agg").value.trim() || null,
+    unit: document.getElementById("x-unit").value.trim() || null,
+    note: document.getElementById("x-note").value.trim() || null,
+  };
+  if (document.getElementById("x-has-default").checked) {
+    body.default = parseScalar(document.getElementById("x-default-value").value);
+  } else {
+    body.default = null;
+  }
+  try {
+    await api(`/facts/${id}`, { method: "PUT", body: JSON.stringify(body) });
+    await loadAll();
+    select(id);
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+}
+
+async function deleteFact(id) {
+  if (!confirm("Видалити факт?")) return;
+  await api(`/facts/${id}`, { method: "DELETE" });
+  selectedId = null;
+  await loadAll();
+  document.getElementById("form").innerHTML = "";
+}
+
+function renderDiagnosisForm(d) {
+  if (!d) { document.getElementById("form").innerHTML = "<p>Оберіть діагноз зліва.</p>"; return; }
+  document.getElementById("form").innerHTML = `
+    <h2>${esc(d.name)}</h2>
+    <div class="row">
+      <div><label>Код (використовується в правилах)</label><input id="d-code" value="${esc(d.code)}" placeholder="напр. memory_leak_critical"></div>
+      <div style="flex:0 0 140px"><label>Критичність (1-4)</label><input id="d-criticality" type="number" min="1" max="4" value="${d.criticality}"></div>
+    </div>
+    <label>Людська назва</label>
+    <input id="d-name" value="${esc(d.name)}" placeholder="напр. Критичний витік памʼяті">
+    <label>Опис</label>
+    <textarea id="d-description" placeholder="Що означає цей діагноз">${esc(d.description || "")}</textarea>
+    <label>Рекомендація</label>
+    <textarea id="d-recommendation" placeholder="Що робити оператору">${esc(d.recommendation || "")}</textarea>
+    <div id="err"></div>
+    <button class="primary" onclick="saveDiagnosis('${d._id}')">Зберегти</button>
+    <button class="danger" onclick="deleteDiagnosis('${d._id}')">Видалити</button>
+  `;
+}
+
+async function saveDiagnosis(id) {
+  const errEl = document.getElementById("err");
+  const criticality = parseInt(document.getElementById("d-criticality").value);
+  if (isNaN(criticality) || criticality < 1 || criticality > 4) {
+    errEl.textContent = "Критичність має бути числом від 1 до 4.";
+    return;
+  }
+  const body = {
+    code: document.getElementById("d-code").value.trim(),
+    name: document.getElementById("d-name").value.trim(),
+    criticality: criticality,
+    description: document.getElementById("d-description").value.trim(),
+    recommendation: document.getElementById("d-recommendation").value.trim(),
+  };
+  if (!body.code || !body.name) {
+    errEl.textContent = "Код і назва обовʼязкові.";
+    return;
+  }
+  try {
+    await api(`/diagnoses/${id}`, { method: "PUT", body: JSON.stringify(body) });
+    await loadAll();
+    select(id);
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+}
+
+async function deleteDiagnosis(id) {
+  if (!confirm("Видалити діагноз? Правила, що на нього посилаються, залишаться з некоректним кодом - перевір кнопкою «Перевірити базу знань».")) return;
+  await api(`/diagnoses/${id}`, { method: "DELETE" });
+  selectedId = null;
+  await loadAll();
+  document.getElementById("form").innerHTML = "";
+}
+
+document.getElementById("newBtn").onclick = async () => {
+  try {
+    if (tab === "rules") {
+      const created = await api("/rules", { method: "POST", body: JSON.stringify({
+        id: "Пр-нове-" + Math.random().toString(36).slice(2, 6),
+        branch: "Нова", layer: 1,
+        conditions: [{ fact: "заповни_умову", op: "==", value: "значення" }],
+        conclusions: [{ fact: "заповни_висновок", value: "значення" }],
+        text: "", note: "", enabled: true,
+      })});
+      await loadAll();
+      select(created._id);
+    } else if (tab === "facts") {
+      const created = await api("/facts", { method: "POST", body: JSON.stringify({
+        name: "новий_факт_" + Math.random().toString(36).slice(2, 6),
+        kind: "raw",
+      })});
+      await loadAll();
+      select(created._id);
+    } else {
+      const created = await api("/diagnoses", { method: "POST", body: JSON.stringify({
+        code: "новий_діагноз_" + Math.random().toString(36).slice(2, 6),
+        name: "Новий діагноз",
+        criticality: 2,
+        description: "", recommendation: "",
+      })});
+      await loadAll();
+      select(created._id);
+    }
+  } catch (e) {
+    alert("Не вдалося створити: " + e.message);
+  }
+};
+
+document.getElementById("tabRules").onclick = () => { tab = "rules"; selectedId = null; setTab(); };
+document.getElementById("tabFacts").onclick = () => { tab = "facts"; selectedId = null; setTab(); };
+document.getElementById("tabDiagnoses").onclick = () => { tab = "diagnoses"; selectedId = null; setTab(); };
+function setTab() {
+  document.getElementById("tabRules").classList.toggle("active", tab === "rules");
+  document.getElementById("tabFacts").classList.toggle("active", tab === "facts");
+  document.getElementById("tabDiagnoses").classList.toggle("active", tab === "diagnoses");
+  document.getElementById("form").innerHTML = "";
+  reportContext("editor." + tab);
+  renderList();
+}
+
+document.getElementById("validateBtn").onclick = async () => {
+  const el = document.getElementById("validateResult");
+  el.textContent = "Перевірка...";
+  try {
+    const r = await api("/kb/validate");
+    el.textContent = JSON.stringify(r, null, 2);
+  } catch (e) {
+    el.textContent = "Помилка: " + e.message;
+  }
+};
+
+checkStatus();
+
+function openHelp() { helpFor(); }
+
+function applyCommand(m) {
+  if (m.tab && ["rules", "facts", "diagnoses"].includes(m.tab)) {
+    tab = m.tab; selectedId = null; setTab();
+  }
+  if (m.validate) document.getElementById("validateBtn").click();
+}
+
+function itemMenu(it) {
+  const id = it._id;
+  const open = { label: "Відкрити", run: () => select(id) };
+  const help = { label: "Довідка про цей розділ", run: () => helpFor() };
+  if (tab === "rules") {
+    return [open,
+      { label: it.enabled === false ? "Увімкнути правило" : "Вимкнути правило", run: () => toggleRule(id) },
+      "-", { label: "Видалити правило…", danger: true, run: () => deleteRule(id) }, "-", help];
+  }
+  if (tab === "facts") {
+    return [open, "-", { label: "Видалити факт…", danger: true, run: () => deleteFact(id) }, "-", help];
+  }
+  return [open, "-", { label: "Видалити діагноз…", danger: true, run: () => deleteDiagnosis(id) }, "-", help];
+}
+
+async function toggleRule(id) {
+  await api(`/rules/${id}/toggle`, { method: "POST" });
+  await loadAll();
+  select(id);
+}
+
+loadAll().then(() => {
+  const p = hashParams();
+  if (p.tab || p.validate) applyCommand(p);
+  reportContext("editor." + tab);
+});
+</script>
+</body>
+</html>

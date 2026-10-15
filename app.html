@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Система діагностики серверів</title>
+<style>
+  :root { --bar:#1f3a5f; --bar-hover:#2c5282; --line:#d8d6cf; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; font: 14px system-ui, -apple-system, "Segoe UI", sans-serif; background: #f5f5f2; color: #222; overflow: hidden; }
+
+  #menubar { display: flex; align-items: stretch; height: 38px; background: var(--bar); color: #fff; user-select: none; position: relative; z-index: 70; }
+  #brand { display: flex; align-items: center; padding: 0 16px; font-weight: 700; background: #162f4d; letter-spacing: .02em; }
+  #menus { display: flex; }
+  .menu { position: relative; }
+  .mtitle { height: 38px; padding: 0 14px; display: flex; align-items: center; cursor: pointer; }
+  .menu.open > .mtitle, .mtitle:hover { background: var(--bar-hover); }
+  .dropdown { display: none; position: absolute; top: 38px; left: 0; min-width: 280px; background: #fff; color: #222; border: 1px solid #b9b7ae; box-shadow: 0 8px 20px rgba(0,0,0,.22); padding: 4px 0; }
+  .menu.open > .dropdown { display: block; }
+  .mi { position: relative; display: flex; justify-content: space-between; gap: 28px; padding: 7px 16px; cursor: pointer; white-space: nowrap; }
+  .mi:hover { background: #e6eefa; }
+  .mi .acc { color: #888; font-size: 12px; }
+  .msep { height: 1px; margin: 4px 0; background: #e6e4dd; }
+  .sub { display: none; position: absolute; left: 100%; top: -5px; min-width: 250px; background: #fff; color: #222; border: 1px solid #b9b7ae; box-shadow: 0 8px 20px rgba(0,0,0,.22); padding: 4px 0; }
+  .mi.has-sub:hover > .sub { display: block; }
+  #conn { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #9aa; }
+  .dot.ok { background: #3ec27a; }
+  .dot.err { background: #ef6a5e; }
+
+  #stage { flex: 1; position: relative; background: #fff; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+  #statusbar { display: flex; height: 26px; background: #e9e8e2; border-top: 1px solid var(--line); font-size: 12px; color: #444; }
+  #statusbar > div { display: flex; align-items: center; padding: 0 12px; border-right: 1px solid var(--line); }
+  #sb-hint { flex: 1; }
+
+
+  #overlay { position: fixed; inset: 0; background: rgba(20,20,18,.45); display: none; align-items: center; justify-content: center; z-index: 80; }
+  #overlay.open { display: flex; }
+  .dlg { background: #fff; width: min(480px, 92vw); border: 1px solid #6f8db5; box-shadow: 0 14px 40px rgba(0,0,0,.35); }
+  .dlg header { padding: 9px 14px; background: linear-gradient(#3b6aa3, #2a5388); color: #fff; font-weight: 600; }
+  .dlg .body { padding: 16px 18px; line-height: 1.55; }
+  .dlg .body table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  .dlg .body td { padding: 3px 4px; border-bottom: 1px solid #eee; }
+  .dlg footer { padding: 10px 14px; text-align: right; border-top: 1px solid #eee; }
+  .dlg button { padding: 6px 22px; border: 1px solid #2b6cb0; background: #2b6cb0; color: #fff; border-radius: 3px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="menubar">
+  <div id="brand" title="Система діагностики серверів">СДС · Діагностика серверів</div>
+  <div id="menus"></div>
+  <div id="conn"><span class="dot" id="dot"></span><span id="conn-text">перевірка з'єднання…</span></div>
+</div>
+
+<div id="stage"><iframe id="view" title="Робоча область"></iframe></div>
+
+<div id="statusbar">
+  <div id="sb-hint">Готово</div>
+  <div id="sb-ctx">—</div>
+  <div id="sb-keys">F1 — довідка · Ctrl+1/2/3 — сторінки</div>
+</div>
+
+<div id="overlay"><div class="dlg">
+  <header>Про систему</header>
+  <div class="body" id="about-body"></div>
+  <footer><button id="about-ok">OK</button></footer>
+</div></div>
+
+<script>
+const API = "http://localhost:8000/api";
+const $ = (s) => document.querySelector(s);
+
+const PAGES = {
+  diagnose: { file: "diagnose.html", title: "Діагностика" },
+  logs:     { file: "logs.html",     title: "Історія прогонів" },
+  editor:   { file: "editor.html",   title: "Редактор бази знань" },
+};
+const CONTEXT_LABEL = {
+  "diagnose": "Діагностика",
+  "diagnose.picker": "Діагностика › Додавання показника",
+  "diagnose.result": "Діагностика › Результат",
+  "logs": "Історія прогонів",
+  "editor.rules": "Редактор › Правила",
+  "editor.facts": "Редактор › Факти",
+  "editor.diagnoses": "Редактор › Діагнози",
+};
+
+const MENUS = [
+  { title: "Система", items: [
+    { label: "Діагностика", acc: "Ctrl+1", hint: "Ввести показники сервера та запустити діагностику", go: ["diagnose"] },
+    { label: "Історія прогонів", acc: "Ctrl+2", hint: "Переглянути збережені результати діагностики", go: ["logs"] },
+    { label: "Редактор бази знань", acc: "Ctrl+3", hint: "Редагувати правила, факти та діагнози", go: ["editor"] },
+    "-",
+    { label: "Перевірити з'єднання з бекендом", hint: "Перевірити, чи відповідає сервер діагностики", action: "ping" },
+    { label: "Оновити поточне вікно", acc: "F5", hint: "Перезавантажити робочу область", action: "reload" },
+  ]},
+  { title: "База знань", items: [
+    { label: "Правила", hint: "Відкрити редактор на вкладці «Правила»", go: ["editor", { tab: "rules" }] },
+    { label: "Факти", hint: "Відкрити редактор на вкладці «Факти»", go: ["editor", { tab: "facts" }] },
+    { label: "Діагнози", hint: "Відкрити редактор на вкладці «Діагнози»", go: ["editor", { tab: "diagnoses" }] },
+    "-",
+    { label: "Перевірити базу знань", hint: "Знайти помилки в правилах і фактах без запуску діагностики", go: ["editor", { validate: 1 }] },
+  ]},
+  { title: "Діагностика", items: [
+    { label: "Нова діагностика", hint: "Очистити список показників і почати спочатку", go: ["diagnose", { clear: 1 }] },
+    { label: "Готові приклади", hint: "Підставити готовий набір показників", sub: [
+      { label: "Усе в нормі", hint: "Здоровий сервер: діагнозів немає", go: ["diagnose", { example: "healthy" }] },
+      { label: "Критичний витік памʼяті", hint: "Один підтверджений діагноз, SEV1", go: ["diagnose", { example: "memory" }] },
+      { label: "Кілька проблем одночасно", hint: "Чотири діагнози з різних гілок", go: ["diagnose", { example: "multi" }] },
+    ]},
+    { label: "Історія прогонів", hint: "Переглянути збережені результати діагностики", go: ["logs"] },
+  ]},
+  { title: "Довідка", items: [
+    { label: "Інструкція користувача", acc: "F1", hint: "Відкрити інструкцію в новій вкладці (потрібен запуск help/serve_manual.py та інтернет)", action: "manual" },
+    "-",
+    { label: "Про систему", hint: "Версія та склад системи", action: "about" },
+  ]},
+];
+
+let current = null, viewLoaded = false, context = "diagnose";
+let hintTimer = null;
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function hint(text) { $("#sb-hint").textContent = text || "Готово"; }
+function flash(text, ms = 5000) {
+  hint(text);
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => hint(""), ms);
+}
+
+/* ---------- меню ---------- */
+function anyOpen() { return !!document.querySelector(".menu.open"); }
+function closeMenus() { document.querySelectorAll(".menu.open").forEach(m => m.classList.remove("open")); }
+function openMenu(menu) { closeMenus(); menu.classList.add("open"); }
+
+function buildItem(it) {
+  if (it === "-") return el("div", "msep");
+  const row = el("div", "mi" + (it.sub ? " has-sub" : ""));
+  row.append(el("span", "lbl", it.label), el("span", "acc", it.sub ? "▸" : (it.acc || "")));
+  row.addEventListener("mouseenter", () => hint(it.hint || ""));
+  row.addEventListener("mouseleave", () => hint(""));
+  if (it.sub) {
+    const sub = el("div", "sub");
+    it.sub.forEach(s => sub.appendChild(buildItem(s)));
+    row.appendChild(sub);
+  } else {
+    row.addEventListener("click", (e) => { e.stopPropagation(); closeMenus(); runItem(it); });
+  }
+  return row;
+}
+
+function buildMenus() {
+  const host = $("#menus");
+  MENUS.forEach(m => {
+    const menu = el("div", "menu");
+    const title = el("div", "mtitle", m.title);
+    const dd = el("div", "dropdown");
+    m.items.forEach(it => dd.appendChild(buildItem(it)));
+    menu.append(title, dd);
+    host.appendChild(menu);
+    title.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.classList.contains("open") ? closeMenus() : openMenu(menu);
+    });
+    title.addEventListener("mouseenter", () => { if (anyOpen()) openMenu(menu); });
+  });
+}
+
+const ACTIONS = {
+  "ping": ping,
+  "reload": reloadView,
+  "manual": openManual,
+  "about": showAbout,
+};
+function runItem(it) {
+  if (it.go) go(it.go[0], it.go[1] || {});
+  else if (it.action) ACTIONS[it.action]();
+}
+
+/* ---------- навігація ---------- */
+function updateCtx() {
+  $("#sb-ctx").textContent = CONTEXT_LABEL[context] || (PAGES[current] ? PAGES[current].title : "—");
+  document.title = (PAGES[current] ? PAGES[current].title + " — " : "") + "Система діагностики серверів";
+}
+
+function go(page, params = {}) {
+  closeMenus();
+  if (current === page && viewLoaded) {
+    $("#view").contentWindow.postMessage({ type: "cmd", ...params }, "*");
+    return;
+  }
+  current = page;
+  viewLoaded = false;
+  context = page;
+  const q = new URLSearchParams(params).toString();
+  $("#view").src = PAGES[page].file + (q ? "#" + q : "");
+  updateCtx();
+}
+function reloadView() {
+  if (!current) return;
+  viewLoaded = false;
+  $("#view").contentWindow.location.reload();
+}
+$("#view").addEventListener("load", () => { viewLoaded = true; });
+
+/* ---------- довідка ---------- */
+
+/* ---------- сайт інструкції (Docsify) ---------- */
+const MANUAL_URL = "http://localhost:3000/";
+async function openManual() {
+  try {
+    await fetch(MANUAL_URL + "index.html", { mode: "no-cors" });
+    window.open(MANUAL_URL, "_blank");
+  } catch (e) {
+    flash("Сайт інструкції не запущено. У корені проєкту виконайте: python help/serve_manual.py", 9000);
+  }
+}
+
+/* ---------- діалог «Про систему» ---------- */
+async function showAbout() {
+  const body = $("#about-body");
+  body.innerHTML = "<b>Система діагностики серверів</b><br>Експертна система на продукційних правилах з коефіцієнтами впевненості (CF).<table id='about-tbl'><tr><td>Завантаження складу бази знань…</td></tr></table>";
+  $("#overlay").classList.add("open");
+  try {
+    const [r, f, d] = await Promise.all(["rules", "facts", "diagnoses"].map(x => fetch(`${API}/${x}`).then(res => res.json())));
+    $("#about-tbl").innerHTML =
+      `<tr><td>Правил</td><td><b>${r.length}</b></td></tr>` +
+      `<tr><td>Фактів</td><td><b>${f.length}</b></td></tr>` +
+      `<tr><td>Діагнозів у довіднику</td><td><b>${d.length}</b></td></tr>` +
+      `<tr><td>Стек</td><td>FastAPI · MongoDB · HTML/JS</td></tr>`;
+  } catch (e) {
+    $("#about-tbl").innerHTML = "<tr><td style='color:#b3261e'>Не вдалося отримати склад бази знань — бекенд недоступний.</td></tr>";
+  }
+}
+function closeAbout() { $("#overlay").classList.remove("open"); }
+$("#about-ok").addEventListener("click", closeAbout);
+
+/* ---------- з'єднання ---------- */
+function setConn(ok, text) {
+  $("#dot").className = "dot " + (ok ? "ok" : "err");
+  $("#conn-text").textContent = text;
+}
+async function health() {
+  try {
+    const h = await (await fetch(API + "/health")).json();
+    setConn(!!h.mongo_connected, h.mongo_connected ? `Бекенд: з'єднано · ${h.rules_in_db ?? "?"} правил` : "Бекенд: MongoDB не відповідає");
+    return h;
+  } catch (e) {
+    setConn(false, "Бекенд: немає зв'язку");
+    return null;
+  }
+}
+async function ping() {
+  flash("Перевірка з'єднання…");
+  const h = await health();
+  flash(h && h.mongo_connected ? `З'єднання з бекендом у порядку (правил у базі: ${h.rules_in_db}).` : "Бекенд недоступний. Перевірте, чи запущено uvicorn (порт 8000).");
+}
+
+/* ---------- клавіатура й повідомлення від вкладених сторінок ---------- */
+function keyAction(k) {
+  if (k.key === "F1") { openManual(); return true; }
+  if (k.key === "F5") { reloadView(); return true; }
+  if (k.ctrl && k.key === "1") { go("diagnose"); return true; }
+  if (k.ctrl && k.key === "2") { go("logs"); return true; }
+  if (k.ctrl && k.key === "3") { go("editor"); return true; }
+  if (k.key === "Escape") {
+    if ($("#overlay").classList.contains("open")) closeAbout();
+    else closeMenus();
+    return true;
+  }
+  return false;
+}
+document.addEventListener("keydown", (e) => { if (keyAction({ key: e.key, ctrl: e.ctrlKey })) e.preventDefault(); });
+document.addEventListener("click", closeMenus);
+window.addEventListener("blur", closeMenus);
+
+window.addEventListener("message", (e) => {
+  const m = e.data || {};
+  switch (m.type) {
+    case "context": context = m.context; updateCtx(); break;
+    case "key": keyAction(m); break;
+    case "help": openManual(); break;
+    case "navigate": go(m.page, m.params || {}); break;
+  }
+});
+
+/* ---------- старт ---------- */
+buildMenus();
+const startPage = location.hash.replace("#", "");
+go(PAGES[startPage] ? startPage : "diagnose");
+health();
+setInterval(health, 10000);
+</script>
+</body>
+</html>

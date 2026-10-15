@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Інструкція — Система діагностики серверів</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
+</head>
+<body>
+<div id="app">Завантаження інструкції…</div>
+<script>
+// Сайт інструкції на Docsify. Запуск: python help/serve_manual.py -> http://localhost:3000
+// (Docsify читає .md-файли по HTTP, подвійний клік по index.html не працює; потрібен інтернет для CDN.)
+window.$docsify = {
+  name: "Система діагностики серверів",
+  homepage: "start.md",
+  loadSidebar: true,
+  auto2top: true,
+  search: { placeholder: "Пошук в інструкції", noData: "Нічого не знайдено" },
+};
+</script>
+<script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
+<script src="//cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>
+</body>
+</html>

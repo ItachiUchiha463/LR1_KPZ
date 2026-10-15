@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Логи прогонів</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; background: #f5f5f2; color: #222; }
+  #left { width: 380px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+  #right { flex: 1; padding: 20px; overflow-y: auto; }
+  #head { padding: 14px; border-bottom: 1px solid #ddd; }
+  #head h2 { margin: 0 0 8px; font-size: 16px; }
+  #status { font-size: 12px; margin-bottom: 8px; }
+  #status.ok { color: #1a7a45; }
+  #status.err { color: #b3261e; }
+  .controls { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #555; }
+  .controls select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+  button.plain { background: #eee; border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  #runsList { flex: 1; overflow-y: auto; }
+  .run-row { padding: 9px 14px; border-bottom: 1px solid #f0f0ec; cursor: pointer; font-size: 12.5px; }
+  .run-row:hover { background: #f7f7f4; }
+  .run-row.active { background: #e8f1fa; box-shadow: inset 3px 0 0 #2b6cb0; }
+  .run-row .r-time { color: #999; font-size: 11px; }
+  .run-row .r-label { color: #444; margin: 2px 0; }
+  .run-diag { display: inline-block; background: #fde8e8; color: #8a1c1c; padding: 1px 7px; border-radius: 5px; font-size: 11px; margin: 2px 3px 0 0; }
+  .run-sev { display: inline-block; padding: 1px 8px; border-radius: 5px; font-size: 11px; font-weight: 700; color: #fff; margin-left: 4px; }
+  .sev1 { background: #8a1c1c; }
+  .sev2 { background: #c05621; }
+  .sev3 { background: #b7791f; }
+  .sev4 { background: #718096; }
+  .ok-tag { color: #1a7a45; font-size: 11px; }
+  #emptyRuns { color: #999; font-size: 12px; padding: 16px; }
+
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+  .diag { display: inline-block; background: #fde8e8; color: #8a1c1c; padding: 4px 10px; border-radius: 6px; font-size: 13px; margin: 3px 4px 3px 0; }
+  .diag-card { border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid; }
+  .diag-card.tier-problem { background: #fde8e8; border-color: #e5a3a3; }
+  .diag-card.tier-possible { background: #fdf3e0; border-color: #e8c98a; }
+  .diag-card .dhead { display: flex; align-items: center; justify-content: space-between; }
+  .diag-card .dname { font-weight: 700; font-size: 14px; }
+  .diag-card.tier-problem .dname { color: #8a1c1c; }
+  .diag-card.tier-possible .dname { color: #8a5a06; }
+  .diag-card .dcf { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: rgba(0,0,0,.08); }
+  .diag-card .ddesc { font-size: 12px; color: #555; margin-top: 4px; }
+  .diag-card .drec { font-size: 12px; color: #333; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,.08); }
+  .diag-card .drec b { color: #1a5a3a; }
+  .tier-badge { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 4px; }
+  .tier-problem .tier-badge { background: #8a1c1c; color: #fff; }
+  .tier-possible .tier-badge { background: #b7791f; color: #fff; }
+  .sev { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 700; color: #fff; }
+  .ok-msg { color: #1a7a45; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eee; }
+  .trace-row { font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+  .trace-row .rid { font-weight: 600; color: #2b6cb0; }
+  .warn { color: #b7791f; font-size: 13px; }
+  pre.raw { font-size: 11px; background: #f7f7f5; padding: 10px; border-radius: 6px; overflow-x: auto; max-height: 300px; }
+  details summary { cursor: pointer; font-size: 13px; font-weight: 600; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<div id="left">
+  <div id="head">
+    <h2>Логи прогонів <button class="help-btn" onclick="openHelp()" title="Довідка (F1)">?</button></h2>
+    <div id="status">перевірка з'єднання...</div>
+    <div class="controls">
+      <label><input type="checkbox" id="autoRefresh" checked style="width:auto"> автооновлення</label>
+      <select id="refreshInterval">
+        <option value="5000">5 сек</option>
+        <option value="10000" selected>10 сек</option>
+        <option value="30000">30 сек</option>
+      </select>
+      <button class="plain" onclick="loadRuns()">↻</button>
+    </div>
+  </div>
+  <div id="runsList"></div>
+  <div id="emptyRuns" style="display:none">Ще немає збережених прогонів. Запусти agent.py з save_run або встанови прапорець «зберегти прогін» у diagnose.html.</div>
+</div>
+
+<div id="right">
+  <div id="detail"><p style="color:#888">Обери прогін зліва, щоб побачити деталі.</p></div>
+</div>
+
+<style>
+.ctx { position: fixed; z-index: 1000; min-width: 210px; background: #fff; border: 1px solid #b9b7ae; box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 4px 0; font-size: 13px; }
+.ctx div { padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+.ctx div:hover { background: #e6eefa; }
+.ctx hr { border: 0; border-top: 1px solid #e6e4dd; margin: 4px 0; }
+.ctx .danger { color: #b3261e; }
+.help-btn { background: #eef4fb; border: 1px solid #bcd6ef; color: #2b6cb0; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; font-weight: 700; cursor: pointer; line-height: 1; padding: 0; vertical-align: middle; }
+</style>
+<script>
+const EMBEDDED = window.parent !== window;
+function reportContext(ctx) {
+  window.__ctx = ctx;
+  if (EMBEDDED) parent.postMessage({ type: "context", context: ctx }, "*");
+}
+function helpFor() {
+  if (EMBEDDED) parent.postMessage({ type: "help" }, "*");
+  else window.open("http://localhost:3000/", "_blank");
+}
+function hashParams() {
+  const p = {};
+  new URLSearchParams(location.hash.replace(/^#/, "")).forEach((v, k) => { p[k] = v; });
+  return p;
+}
+document.addEventListener("keydown", (e) => {
+  const forward = e.key === "F1" || e.key === "F5" || (e.ctrlKey && ["1", "2", "3"].includes(e.key));
+  if (!forward) return;
+  e.preventDefault();
+  if (EMBEDDED) parent.postMessage({ type: "key", key: e.key, ctrl: e.ctrlKey }, "*");
+  else if (e.key === "F1") helpFor();
+});
+window.addEventListener("message", (e) => {
+  const m = e.data || {};
+  if (m.type === "cmd" && typeof applyCommand === "function") applyCommand(m);
+});
+let __ctxEl = null;
+function hideCtx() { if (__ctxEl) { __ctxEl.remove(); __ctxEl = null; } }
+function showCtx(ev, items) {
+  ev.preventDefault();
+  hideCtx();
+  const m = document.createElement("div");
+  m.className = "ctx";
+  items.forEach((it) => {
+    if (it === "-") { m.appendChild(document.createElement("hr")); return; }
+    const d = document.createElement("div");
+    d.textContent = it.label;
+    if (it.danger) d.className = "danger";
+    d.onclick = () => { hideCtx(); it.run(); };
+    m.appendChild(d);
+  });
+  document.body.appendChild(m);
+  m.style.left = Math.max(0, Math.min(ev.clientX, innerWidth - m.offsetWidth - 4)) + "px";
+  m.style.top = Math.max(0, Math.min(ev.clientY, innerHeight - m.offsetHeight - 4)) + "px";
+  __ctxEl = m;
+}
+document.addEventListener("click", hideCtx);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && EMBEDDED) parent.postMessage({ type: "key", key: "Escape" }, "*"); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideCtx(); });
+window.addEventListener("blur", hideCtx);
+</script>
+<script>
+const API = "http://localhost:8000/api";
+
+async function api(path) {
+  const res = await fetch(API + path);
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const msg = Array.isArray(data?.detail)
+      ? data.detail.map(d => (d.loc || []).join(".") + ": " + d.msg).join("; ")
+      : (data?.detail || res.statusText);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function esc(s) { return (s ?? "").toString().replace(/</g, "&lt;"); }
+
+async function checkStatus() {
+  const el = document.getElementById("status");
+  try {
+    const h = await api("/health");
+    el.className = h.mongo_connected ? "ok" : "err";
+    el.textContent = h.mongo_connected ? "З'єднано" : "Mongo не відповідає";
+  } catch (e) {
+    el.className = "err";
+    el.textContent = "Немає з'єднання з бекендом (localhost:8000)";
+  }
+}
+
+let runs = [];
+let selectedId = null;
+let refreshTimer = null;
+
+function formatTime(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("uk-UA", { hour: "2-digit", minute: "2-digit", second: "2-digit",
+                                        day: "2-digit", month: "2-digit" });
+  } catch { return iso; }
+}
+
+async function loadRuns() {
+  try {
+    runs = await api("/runs?limit=100");
+    renderRunsList();
+  } catch (e) {
+    document.getElementById("emptyRuns").style.display = "block";
+    document.getElementById("emptyRuns").textContent = "Помилка завантаження: " + e.message;
+  }
+}
+
+function renderRunsList() {
+  const host = document.getElementById("runsList");
+  const empty = document.getElementById("emptyRuns");
+  if (!runs.length) {
+    host.innerHTML = "";
+    empty.style.display = "block";
+    empty.textContent = "Ще немає збережених прогонів. Запусти agent.py з save_run або встанови прапорець «зберегти прогін» у diagnose.html.";
+    return;
+  }
+  empty.style.display = "none";
+  host.innerHTML = runs.map(r => {
+    const details = r.diagnoses_detail || [];
+    const diagHtml = details.length
+      ? details.map(d => `<span class="run-diag" title="${esc(d.tier)} ${Math.round(d.cf*100)}%">${esc(d.name)}</span>`).join("")
+      : '<span class="ok-tag">ok</span>';
+    const sevHtml = r.severity ? `<span class="run-sev sev${r.severity.replace("SEV","")}">${esc(r.severity)}</span>` : "";
+    return `<div class="run-row ${r._id === selectedId ? "active" : ""}" onclick="selectRun('${r._id}')" oncontextmenu="runMenu(event, '${r._id}')">
+      <div class="r-time">${esc(formatTime(r.created_at))}</div>
+      <div class="r-label">${esc(r.label || "(без підпису)")}</div>
+      <div>${diagHtml}${sevHtml}</div>
+    </div>`;
+  }).join("");
+}
+
+async function selectRun(id) {
+  selectedId = id;
+  renderRunsList();
+  document.getElementById("detail").innerHTML = "<p>Завантаження...</p>";
+  try {
+    const r = await api(`/runs/${id}`);
+    renderDetail(r);
+  } catch (e) {
+    document.getElementById("detail").innerHTML = `<p style="color:#b3261e">Помилка: ${esc(e.message)}</p>`;
+  }
+}
+
+function renderDetail(r) {
+  const host = document.getElementById("detail");
+  let html = "";
+
+  html += '<div class="card"><h2>' + esc(r.label || "(без підпису)") + '</h2>';
+  html += `<p style="color:#888;font-size:12px">${esc(formatTime(r.created_at))} · run_id: ${esc(r.run_id || "")}</p>`;
+  const details = r.diagnoses_detail || [];
+  if (details.length === 0) {
+    html += '<p class="ok-msg">Жодного діагнозу — система в нормі.</p>';
+  } else {
+    details.forEach(d => {
+      const tierClass = d.tier === "проблема" ? "tier-problem" : "tier-possible";
+      html += `<div class="diag-card ${tierClass}">
+        <div class="dhead">
+          <span class="dname">${esc(d.name)} <span class="tier-badge">${esc(d.tier)}</span></span>
+          <span class="dcf">${Math.round(d.cf * 100)}%</span>
+        </div>
+        ${d.description ? `<div class="ddesc">${esc(d.description)}</div>` : ""}
+        ${d.recommendation ? `<div class="drec"><b>Рекомендація:</b> ${esc(d.recommendation)}</div>` : ""}
+      </div>`;
+    });
+  }
+  if (r.severity) {
+    const sevClass = "sev" + r.severity.replace("SEV", "");
+    html += `<p style="margin-top:10px"><span class="sev ${sevClass}">${esc(r.severity)}</span>`;
+    if (r.problem_criticality != null) html += ` <span style="color:#888;font-size:12px">критичність: ${r.problem_criticality}</span>`;
+    html += `</p>`;
+  }
+  html += '</div>';
+
+  if (r.conflicts && r.conflicts.length) {
+    html += '<div class="card"><h2 style="color:#b3261e">Конфлікти в базі знань</h2>';
+    html += '<table><tr><th>Факт</th><th>Залишено</th><th>Відхилено</th></tr>';
+    r.conflicts.forEach(c => {
+      html += `<tr><td>${esc(c.fact)}</td><td>${esc(c.kept_value)} (${esc(c.kept_by)})</td><td>${esc(c.rejected_value)} (${esc(c.rejected_by)})</td></tr>`;
+    });
+    html += '</table></div>';
+  }
+
+  if (r.errors && r.errors.length) {
+    html += '<div class="card"><h2 style="color:#b3261e">Помилки виконання</h2>';
+    r.errors.forEach(e => { html += `<p class="warn">${esc(e.where)}: ${esc(e.error)}</p>`; });
+    html += '</div>';
+  }
+
+  if (r.missing_raw_facts && r.missing_raw_facts.length) {
+    html += `<div class="card"><h2>Неподані вхідні факти (${r.missing_raw_facts.length})</h2>
+      <details><summary>показати список</summary>
+      <p style="font-size:12px;color:#777">${r.missing_raw_facts.map(esc).join(", ")}</p>
+      </details></div>`;
+  }
+
+  if (r.fired_rules && r.fired_rules.length) {
+    html += `<div class="card"><h2>Спрацьовані правила (${r.fired_rules.length})</h2>`;
+    r.fired_rules.forEach(fr => {
+      html += `<div class="trace-row"><span class="rid">${esc(fr.id)}</span>
+        <span style="color:#888">[${esc(fr.branch)}, шар ${fr.layer}, ітерація ${fr.iteration}]</span><br>
+        ${esc(fr.text)}<br>
+        → ${fr.produced.map(p => `${esc(p.fact)} = ${esc(p.value)}`).join(", ")}</div>`;
+    });
+    html += '</div>';
+  }
+
+  html += `<div class="card"><details><summary>Повний знімок робочої пам'яті (facts)</summary>
+    <pre class="raw">${esc(JSON.stringify(r.facts, null, 2))}</pre></details></div>`;
+
+  if (r.trace && r.trace.length) {
+    html += `<div class="card"><details><summary>Повне трасування (${r.trace.length} записів, сирий JSON)</summary>
+      <pre class="raw">${esc(JSON.stringify(r.trace, null, 2))}</pre></details></div>`;
+  }
+
+  host.innerHTML = html;
+}
+
+/* ---------------- автооновлення ---------------- */
+
+function scheduleRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  if (!document.getElementById("autoRefresh").checked) return;
+  const ms = parseInt(document.getElementById("refreshInterval").value, 10);
+  refreshTimer = setInterval(loadRuns, ms);
+}
+
+document.getElementById("autoRefresh").addEventListener("change", scheduleRefresh);
+document.getElementById("refreshInterval").addEventListener("change", scheduleRefresh);
+
+async function init() {
+  reportContext("logs");
+  checkStatus();
+  await loadRuns();
+  scheduleRefresh();
+}
+
+function openHelp() { helpFor(); }
+function runMenu(ev, id) {
+  showCtx(ev, [
+    { label: "Відкрити прогін", run: () => selectRun(id) },
+    { label: "Копіювати ідентифікатор прогону", run: () => { if (navigator.clipboard) navigator.clipboard.writeText(id); } },
+    "-",
+    { label: "Довідка про історію прогонів", run: () => helpFor() },
+  ]);
+}
+
+init();
+</script>
+</body>
+</html>
